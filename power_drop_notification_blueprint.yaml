@@ -1,0 +1,94 @@
+blueprint:
+  name: Notify when appliance finishes (power drops to zero)
+  description: >
+    Monitors a power sensor. When it rises above the threshold (appliance starts),
+    waits for it to stay above the threshold for a minimum duration, then watches
+    for it to drop below the threshold (appliance finished) and sends a notification.
+    Useful for washing machines, dryers, dishwashers, etc.
+  domain: automation
+  input:
+    power_sensor:
+      name: Power Sensor
+      description: The power meter entity to monitor (in watts).
+      selector:
+        entity:
+          domain: sensor
+          device_class: power
+    notify_service:
+      name: Notification Service
+      description: The notification service to call (e.g., notify.mobile_app_my_phone).
+      selector:
+        text:
+      default: notify.mobile_app_my_phone
+    zero_threshold:
+      name: Zero Threshold (watts)
+      description: Power level at or below which the device is considered idle/off.
+      selector:
+        number:
+          min: 0
+          max: 50
+          step: 1
+          unit_of_measurement: W
+      default: 5
+    active_duration:
+      name: Minimum Active Duration (minutes)
+      description: How long the device must be drawing power before a drop triggers a notification.
+      selector:
+        number:
+          min: 1
+          max: 60
+          step: 1
+          unit_of_measurement: min
+      default: 5
+    notification_title:
+      name: Notification Title
+      description: Title of the notification.
+      selector:
+        text:
+      default: Appliance Finished
+    notification_message:
+      name: Notification Message
+      description: Body of the notification. Use {{ sensor_name }} for the sensor friendly name.
+      selector:
+        text:
+          multiline: true
+      default: "{{ sensor_name }} has finished (power dropped to zero)."
+
+# Trigger when power rises above the threshold (appliance starts)
+trigger:
+  - platform: numeric_state
+    entity_id: !input power_sensor
+    above: !input zero_threshold
+
+action:
+  - variables:
+      sensor_name: "{{ state_attr(trigger.entity_id, 'friendly_name') or trigger.entity_id }}"
+
+  # Wait for the device to remain active for the minimum duration
+  - delay:
+      minutes: !input active_duration
+
+  # Confirm the sensor is still above threshold (device was truly active)
+  - condition: numeric_state
+    entity_id: !input power_sensor
+    above: !input zero_threshold
+
+  # Now wait for the power to drop below threshold (appliance finished)
+  - wait_for_trigger:
+      - platform: numeric_state
+        entity_id: !input power_sensor
+        below: !input zero_threshold
+        for:
+          seconds: 30
+    timeout:
+      hours: 12
+    continue_on_timeout: false
+
+  # Send the notification
+  - service: !input notify_service
+    data:
+      title: !input notification_title
+      message: "{{ notification_message }}"
+
+mode: single
+max_exceeded: silent
