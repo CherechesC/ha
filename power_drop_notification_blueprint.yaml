@@ -6,14 +6,16 @@ blueprint:
     for it to drop below the threshold (appliance finished) and sends a notification.
     Useful for washing machines, dryers, dishwashers, etc.
   domain: automation
+  source_url: https://www.home-assistant.io/docs/blueprint/tutorial/
   input:
     power_sensor:
       name: Power Sensor
       description: The power meter entity to monitor (in watts).
       selector:
         entity:
-          domain: sensor
-          device_class: power
+          filter:
+            - domain: sensor
+              device_class: power
     notify_service:
       name: Notification Service
       description: The notification service to call (e.g., notify.mobile_app_my_phone).
@@ -56,41 +58,40 @@ blueprint:
 
 # Trigger when power rises above the threshold (appliance starts)
 triggers:
-  - trigger:
-    - platform: numeric_state
-      entity_id: !input power_sensor
-      above: !input zero_threshold
+  - trigger: numeric_state
+    entity_id: !input power_sensor
+    above: !input zero_threshold
 
 actions:
-  - action:
-    - variables:
-        sensor_name: "{{ state_attr(trigger.entity_id, 'friendly_name') or trigger.entity_id }}"
+  - variables:
+      notification_message_tpl: !input notification_message
+      sensor_name: "{{ state_attr(trigger.entity_id, 'friendly_name') or trigger.entity_id }}"
 
-    # Wait for the device to remain active for the minimum duration
-    - delay:
-        minutes: !input active_duration
+  # Wait for the device to remain active for the minimum duration
+  - delay:
+      minutes: !input active_duration
 
-    # Confirm the sensor is still above threshold (device was truly active)
-    - condition: numeric_state
-      entity_id: !input power_sensor
-      above: !input zero_threshold
+  # Confirm the sensor is still above threshold (device was truly active)
+  - condition: numeric_state
+    entity_id: !input power_sensor
+    above: !input zero_threshold
 
-    # Now wait for the power to drop below threshold (appliance finished)
-    - wait_for_trigger:
-        - platform: numeric_state
-          entity_id: !input power_sensor
-          below: !input zero_threshold
-          for:
-            seconds: 30
-      timeout:
-        hours: 12
-      continue_on_timeout: false
+  # Now wait for the power to drop below threshold (appliance finished)
+  - wait_for_trigger:
+      - trigger: numeric_state
+        entity_id: !input power_sensor
+        below: !input zero_threshold
+        for:
+          seconds: 30
+    timeout:
+      hours: 12
+    continue_on_timeout: false
 
-    # Send the notification
-    - service: !input notify_service
-      data:
-        title: !input notification_title
-        message: "{{ notification_message }}"
+  # Send the notification
+  - action: !input notify_service
+    data:
+      title: !input notification_title
+      message: "{{ notification_message_tpl }}"
 
 mode: single
 max_exceeded: silent
