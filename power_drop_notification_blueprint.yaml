@@ -64,8 +64,9 @@ triggers:
 
 actions:
   - variables:
+      power_sensor_entity: !input power_sensor
       notification_message_tpl: !input notification_message
-      sensor_name: "{{ state_attr(trigger.entity_id, 'friendly_name') or trigger.entity_id }}"
+      sensor_name: "{{ state_attr(power_sensor_entity, 'friendly_name') or power_sensor_entity }}"
 
   # Wait for the device to remain active for the minimum duration
   - delay:
@@ -91,7 +92,7 @@ actions:
   - action: !input notify_service
     data:
       title: !input notification_title
-      message: "{{ notification_message_tpl }}"
+      message: "{{ notification_message_tpl | replace('{{ sensor_name }}', sensor_name) }}"
 
 mode: single
 max_exceeded: silent
